@@ -10,6 +10,8 @@ Code developed within GridShield project - developed by Leoni Winschermann, Univ
 
 Code is developed such that main.py runs filtering, processing, statistical analysis, generating input for DEMKit software. 
 After that, simulations in DEMKit can be run independently. 
-Then, second.py runs swiping DEMKit output from an Influx database, and generating results/figures from that. 
+Then, secondary.py runs swiping DEMKit output from an Influx database, and generating results/figures from that. 
 
 Structure is further included in the source files. 
+
+Clustering approach not yet committed. Will be added soon.
