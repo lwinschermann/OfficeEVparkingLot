@@ -617,16 +617,14 @@ class StatisticalAnalysis:
             start_percentiles = pd.DataFrame(data = percentileMatrix, index = None, columns = headers)
             carStats = pd.concat([carStats,start_percentiles],axis=1)
         
-        for aspect in itertools.product(percentiles, percentiles):
-            #To prevent errors due to start and end times of a session being less than 15 minutes apart, or within the same 15 min interval, we enforce a minimum duration of 30 minutes
-            carStats['d{}Enforced'.format(aspect[1])] = carStats['d{}'.format(aspect[1])]
-            carStats.loc[carStats['d{}'.format(aspect[1])] < dwell, 'd{}Enforced'.format(aspect[1])] = dwell
+            for aspect in itertools.product(percentiles, percentiles):
+                #To prevent errors due to start and end times of a session being less than 15 minutes apart, or within the same 15 min interval, we enforce a minimum duration of 30 minutes
+                carStats['d{}Enforced'.format(aspect[1])] = carStats['d{}'.format(aspect[1])]
+                carStats.loc[carStats['d{}'.format(aspect[1])] < dwell, 'd{}Enforced'.format(aspect[1])] = dwell
 
-            #calculate new end time 
-            carStats['end_s{}d{}'.format(aspect[0],aspect[1])] = carStats['s{}'.format(aspect[0])] + carStats['d{}Enforced'.format(aspect[1])]
- 
-        print(carStats.keys())
-
+                #calculate new end time 
+                carStats['end_s{}d{}'.format(aspect[0],aspect[1])] = carStats['s{}'.format(aspect[0])] + carStats['d{}Enforced'.format(aspect[1])]
+                
         return carStats
 
 

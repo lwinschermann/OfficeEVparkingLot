@@ -72,7 +72,7 @@ class DataSwipe:
             for value in d:
                 self.result.append(value[1])
         else:  
-            #print("No data!!!\n",query)
+            print("No data!!!\n",query)
             return
 
 
@@ -85,7 +85,7 @@ class DataSwipe:
             if len(self.result) != 0:
                 self.df[key] = np.array(self.result)
             else:
-                print('[MESSAGE:] empty result in {}'.format(key))
+                #print('[MESSAGE:] empty result in {}'.format(key))
                 return
 
     def dataEnergy(self,carStats,case):
@@ -154,11 +154,79 @@ class DataSwipe:
             #save sweeped data to dataframe
             self.dataAppend('{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case))    
     
+    def dataGetEVdata(self,filteredData,evs,cases,extendedCases,baseCase):
+        #per EV and scenario, sweep data
+        for case in cases:
+            if case + "realized_" in extendedCases:
+                for ev in evs:
+                    #realization of charging power
+                    #since we have two cases (Cx_ and Cx_realized_), we read the real data from the Cx_realized_ simulation
+                    field = "W-power.real.c.ELECTRICITY"
+                    measurement = "{}devices".format(case + "realized_")
+                    condition = "\"name\" = 'ElectricVehicle-{}'".format(ev)
+                    self.dataSwipe(field, measurement, condition, 'mean', True)
+                    self.dataAppend('{}{}_ElectricVehicle-{}'.format(case, field, ev))
+                
+                    #offline planning of charging power based on estimations
+                    #since we have two cases (Cx_ and Cx_realized_), we read the real data from the Cx_device instead of the plan from the Cx_controller
+                    field = "W-power.real.c.ELECTRICITY"
+                    measurement = "{}devices".format(case)
+                    condition = "\"name\" = 'ElectricVehicle-{}'".format(ev)
+                    self.dataSwipe(field, measurement, condition, 'mean', True)
+                    self.dataAppend('{}{}_ElectricVehicle-{}'.format(case, "W-power.plan.real.c.ELECTRICITY", ev),True)
+                #calculate the energy served for all cars in current case. Absolute and Relative
+                filteredData = self.dataEnergy(filteredData,case)
+                #calculate the energy NOT served for all cars in current case in offline planning and realization, compared to baseline (e.g. greedy). Both absolute and relative ENS
+                filteredData = self.dataENS(filteredData,case,baseCase)
+                #swipe aggregated BTS power planned and realized
+                self.dataPowerAgg(case,case + "realized_")
+
+            elif case == baseCase:
+                for ev in evs:
+                    #realization of charging power
+                    field = "W-power.real.c.ELECTRICITY"
+                    measurement = "{}devices".format(case)
+                    condition = "\"name\" = 'ElectricVehicle-{}'".format(ev)
+                    self.dataSwipe(field, measurement, condition, 'mean', True)
+                    self.dataAppend('{}{}_ElectricVehicle-{}'.format(case, field, ev))
+
+                    #offline planning of charging power based on estimations
+                    self.dataAppend('{}{}_ElectricVehicle-{}'.format(case, "W-power.plan.real.c.ELECTRICITY", ev),True)        
+                filteredData = self.dataEnergy(filteredData,case)
+                #calculate the energy NOT served for all cars in current case in offline planning and realization, compared to baseline (perfect information). Both absolute and relative ENS
+                filteredData = self.dataENS(filteredData,case,baseCase)    
+                #swipe aggregated BTS power planned and realized
+                self.dataPowerAgg(case, case)
+
+            else:
+                for ev in evs:
+                    #realization of charging power
+                    field = "W-power.real.c.ELECTRICITY"
+                    measurement = "{}devices".format(case)
+                    condition = "\"name\" = 'ElectricVehicle-{}'".format(ev)
+                    self.dataSwipe(field, measurement, condition, 'mean', True)
+                    self.dataAppend('{}{}_ElectricVehicle-{}'.format(case, field, ev))
+
+                    #offline planning of charging power based on estimations
+                    field = "W-power.plan.real.c.ELECTRICITY"
+                    measurement = "{}controllers".format(case)
+                    condition = "\"name\" = 'ElectricVehicleController{}'".format(ev)
+                    self.dataSwipe(field, measurement, condition, 'mean', True)
+                    self.dataAppend('{}{}_ElectricVehicle-{}'.format(case, field, ev),True)
+                #calculate the energy served for all cars in current case. Absolute and Relative
+                filteredData = self.dataEnergy(filteredData,case)
+                #calculate the energy NOT served for all cars in current case in offline planning and realization, compared to baseline (perfect information). Both absolute and relative ENS
+                filteredData = self.dataENS(filteredData,case,baseCase)
+                #swipe aggregated BTS power planned and realized
+                self.dataPowerAgg(case)
+        return filteredData
+
     def dataGlobalMeasures(self,carStats, cases, baseCase):
         ENS = ['ENSrealAbs', 'ENSrealRelative','ENSplanAbs', 'ENSplanRelative', 'ENScaseInternalAbs', 'ENScaseInternalRelative']
         #number of cars (to take average over)
         n = len(carStats)
-        self.dfAggHeaders = ["ENSrealAbs_sum", "ENSrealAbs_average", "ENSrealAbs_max","ENSrealAbs_min", "ENSrealRelative_sum", "ENSrealRelative_average","ENSrealRelative_max","ENSrealRelative_min",  "ENSplanAbs_sum", "ENSplanAbs_average", "ENSplanAbs_max","ENSplanAbs_min", "ENSplanRelative_sum", "ENSplanRelative_average", "ENSplanRelative_max","ENSplanRelative_min", "ENScaseInternalAbs_sum", "ENScaseInternalAbs_average", "ENScaseInternalAbs_max","ENScaseInternalAbs_min", "ENScaseInternalRelative_sum", "ENScaseInternalRelative_average", "ENScaseInternalRelative_max","ENScaseInternalRelative_min", "powerPeakReal", "powerPeakReal_CompC0Abs", "powerPeakReal_CompC0Rel", "powerPeakReal_CompC8Abs", "powerPeakReal_CompC8Rel", "powerPeakPlan", "powerPeakPlan_CompC0Abs", "powerPeakPlan_CompC0Rel", "powerPeakPlan_CompC8Abs", "powerPeakPlan_CompC8Rel", "eRealAgg", "ePlanAgg"]
+        #self.dfAggHeaders = ["ENSrealAbs_sum", "ENSrealAbs_average", "ENSrealAbs_max","ENSrealAbs_min", "ENSrealRelative_sum", "ENSrealRelative_average","ENSrealRelative_max","ENSrealRelative_min",  "ENSplanAbs_sum", "ENSplanAbs_average", "ENSplanAbs_max","ENSplanAbs_min", "ENSplanRelative_sum", "ENSplanRelative_average", "ENSplanRelative_max","ENSplanRelative_min", "ENScaseInternalAbs_sum", "ENScaseInternalAbs_average", "ENScaseInternalAbs_max","ENScaseInternalAbs_min", "ENScaseInternalRelative_sum", "ENScaseInternalRelative_average", "ENScaseInternalRelative_max","ENScaseInternalRelative_min", "powerPeakReal", "powerPeakReal_CompC0Abs", "powerPeakReal_CompC0Rel", "powerPeakReal_CompC8Abs", "powerPeakReal_CompC8Rel", "powerPeakPlan", "powerPeakPlan_CompC0Abs", "powerPeakPlan_CompC0Rel", "powerPeakPlan_CompC8Abs", "powerPeakPlan_CompC8Rel", "eRealAgg", "ePlanAgg"]
+        self.dfAggHeaders = ["ENSrealAbs_sum", "ENSrealAbs_average", "ENSrealAbs_max","ENSrealAbs_min", "ENSrealRelative_sum", "ENSrealRelative_average","ENSrealRelative_max","ENSrealRelative_min",  "ENSplanAbs_sum", "ENSplanAbs_average", "ENSplanAbs_max","ENSplanAbs_min", "ENSplanRelative_sum", "ENSplanRelative_average", "ENSplanRelative_max","ENSplanRelative_min", "ENScaseInternalAbs_sum", "ENScaseInternalAbs_average", "ENScaseInternalAbs_max","ENScaseInternalAbs_min", "ENScaseInternalRelative_sum", "ENScaseInternalRelative_average", "ENScaseInternalRelative_max","ENScaseInternalRelative_min", "powerPeakReal", "powerPeakReal_CompC0Abs", "powerPeakReal_CompC0Rel", "powerPeakPlan", "powerPeakPlan_CompC0Abs", "powerPeakPlan_CompC0Rel", "eRealAgg", "ePlanAgg"]
         for case in cases:
             temp = []
             #get global ENS averages (both absolute and relative over offline planning and online realization)
@@ -170,10 +238,10 @@ class DataSwipe:
 
             #get global power peaks powerPeakReal and powerPeakPlan (if applicable), both absolute and relative to baseCase
             temp = temp + [max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]), max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(baseCase)]) - max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]), max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) / max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(baseCase)])]#max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(baseCase)])/max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)])]
-            temp = temp +[max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) - max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")]), max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) / max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")])]
+            #temp = temp +[max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) - max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")]), max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) / max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")])]
             if '{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case) in self.df:
                 temp = temp + [max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]), max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(baseCase)]) - max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]), max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)])/ max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format(baseCase)])]#max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(baseCase)])/ max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)])]
-                temp = temp + [max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) - max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")]), max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)])/ max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")])]
+                #temp = temp + [max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)]) - max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")]), max(self.df['{}W-power.plan.real.c.ELECTRICITY_BufferTimeshiftable'.format(case)])/ max(self.df['{}W-power.real.c.ELECTRICITY_BufferTimeshiftable'.format("C8_")])]
             else:
                 temp = temp + [float("nan"), float("nan"), float("nan"), float("nan"), float("nan")]
                 print('[MESSAGE:] Exceptions as above only for greedy uncontrolled case C1_. Current case = ', case)
@@ -190,12 +258,17 @@ class DataSwipe:
     #print to excel
     def dataSaveExcel(self, fileName, write=True):
         outputDataDf = pd.DataFrame.from_dict(self.df).transpose()
-        outputDataDfAgg = pd.DataFrame.from_dict(self.dfAgg, orient='index', columns = self.dfAggHeaders)
-        self.outputDataDfAgg = outputDataDfAgg
+        try:
+            outputDataDfAgg = pd.DataFrame.from_dict(self.dfAgg, orient='index', columns = self.dfAggHeaders)
+            self.outputDataDfAgg = outputDataDfAgg
+        except:
+            print('[MESSAGE]: No dataframe with aggregated metrics')
         if write:
             with pd.ExcelWriter(fileName + ".xlsx") as writer:
                 outputDataDf.to_excel(writer, sheet_name='timeSeries')
-                outputDataDfAgg.to_excel(writer, sheet_name='globalMeasures')
+                try:
+                    outputDataDfAgg.to_excel(writer, sheet_name='globalMeasures')
+                except:print('[MESSAGE]: Written time series to Excel.\n')
 
     def dataRead(self,fileName):
         self.outputDataDf = pd.read_excel(fileName + '.xlsx', sheet_name='timeSeries', index_col=0).transpose()        

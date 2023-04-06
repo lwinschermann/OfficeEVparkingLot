@@ -48,13 +48,12 @@ class DemkitSessions:
 # rounding can have values {None, 'up', 'down', 'closest'}
 # filePrefix is prefix of saved txt file in ALPG output format, one for real and one for estimated data with the file names 'fileprefix'_real.txt and 'fileprefix'_estimate.txt respectively
 # staticDefault is what we take as the estimated input in case there is no historical data on an individual car
-    def generateDemkitSessionInput(self, keyStats, keyReal, filePrefix, rounding = None, staticDefault = None):
+    def generateDemkitSessionInput(self, keyStats, keyReal, filePrefix, rounding = None, staticDefault = None, perCar=True):
         dataStats = self.dataStats
         dataReal = self.dataReal
         data_dir = self.data_dir
 
         filePrefix = filePrefix.format(self.ScenarioPrefix)
-        print(filePrefix)
 
         cardIDs = pd.unique(dataReal['card_id'])
         carCount = 0
@@ -86,34 +85,55 @@ class DemkitSessions:
                 #put session value and a comma for both real and estimated files
                 with open(data_dir+'{}_real.txt'.format(filePrefix), 'a') as f:
                     f.writelines('{},'.format(str(correct(tempReal[keyReal].iloc[[sessionIndex]].values[0])))) #Solved problem that indexing was returning errors due to mask. See https://stackoverflow.com/questions/46307490/how-can-i-extract-the-nth-row-of-a-pandas-data-frame-as-a-pandas-data-frame
-                #FIXME took try except out of loop. Having overlapping sessions does not work for DEMKit. Could try to put the estimation to each successive day, but to simulate multiple days, can just run the code multiple times and adapt time filters.
-                #try:
-                #    carEstimate = str(correct(dataStats[dataStats['card_id']==car][keyStats].values[0]))
-                #    with open('{}_estimate.txt'.format(filePrefix), 'a') as g:
-                #        g.writelines('{},'.format(carEstimate))
-                #except:
-                #    print('[EXCEPTION]: An exception occurred. Real data probably includes a car that is not in the training set, or else keyStats was not recognized. Defaulted carEstimate for this instance to staticDefault = {}.'.format(staticDefault))
-                #    with open('{}_estimate.txt'.format(filePrefix), 'a') as g:
-                #        g.writelines('{},'.format(staticDefault))
-            try:
-                carEstimate = str(correct(dataStats[dataStats['card_id']==car][keyStats].values[0]))
-                with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
-                    g.writelines('{},'.format(carEstimate))
-            except:
-                print('[EXCEPTION]: An exception occurred. Real data probably includes a car that is not in the training set, or else keyStats was not recognized. Defaulted carEstimate for this instance to staticDefault = {}.'.format(staticDefault))
-                with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
-                    g.writelines('{},'.format(staticDefault))
+                
+                #if only interested in aggregated profile, and don't need to track individual EVs afterwards, model each session as seperate EV in DEMKit
+                if not perCar:
+                    try:
+                        carEstimate = str(correct(dataStats[dataStats['card_id']==car][keyStats].values[sessionIndex]))
+                        with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                            g.writelines('{},'.format(carEstimate))
+                    except:
+                        print('[EXCEPTION]: An exception occurred. Real data probably includes a car that is not in the training set, or else keyStats was not recognized. Defaulted carEstimate for this instance to staticDefault = {}.'.format(staticDefault))
+                        with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                            g.writelines('{},'.format(staticDefault))
+                    #remove last comma in line and start new line
+                    with open(data_dir+'{}_real.txt'.format(filePrefix), 'a') as f:
+                        f.seek(0,2)
+                        f.truncate(f.tell()-1)
+                        f.writelines('\n')
+                    with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                        g.seek(0,2)
+                        g.truncate(g.tell()-1)
+                        g.writelines('\n')
+                    carCount = carCount +1
+                    if sessionIndex<nSession-1:
+                        #start new line with new index. Only if multiple sessions
+                        with open(data_dir+'{}_real.txt'.format(filePrefix), 'a') as f:
+                            f.writelines('{}:'.format(carCount))
+                        with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                            g.writelines('{}:'.format(carCount))
+                #FIXME Having overlapping sessions does not work for DEMKit. Could try to put the estimation to each successive day, but to simulate multiple days, can just run the code multiple times and adapt time filters.
+            #FIXME sanity check, need if perCar to be within session loop? Then tab right...
+            if perCar:
+                try:
+                    carEstimate = str(correct(dataStats[dataStats['card_id']==car][keyStats].values[0]))
+                    with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                        g.writelines('{},'.format(carEstimate))
+                except:
+                    print('[EXCEPTION]: An exception occurred. Real data probably includes a car that is not in the training set, or else keyStats was not recognized. Defaulted carEstimate for this instance to staticDefault = {}.'.format(staticDefault))
+                    with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                        g.writelines('{},'.format(staticDefault))
 
-            #remove last comma in line and start new line
-            with open(data_dir+'{}_real.txt'.format(filePrefix), 'a') as f:
-                f.seek(0,2)
-                f.truncate(f.tell()-1)
-                f.writelines('\n')
-            with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
-                g.seek(0,2)
-                g.truncate(g.tell()-1)
-                g.writelines('\n')
-            carCount = carCount +1
+                #remove last comma in line and start new line
+                with open(data_dir+'{}_real.txt'.format(filePrefix), 'a') as f:
+                    f.seek(0,2)
+                    f.truncate(f.tell()-1)
+                    f.writelines('\n')
+                with open(data_dir+'{}_estimate.txt'.format(filePrefix), 'a') as g:
+                    g.seek(0,2)
+                    g.truncate(g.tell()-1)
+                    g.writelines('\n')
+                carCount = carCount +1
         #remove last redundant enter
         try:
             with open(data_dir+'{}_real.txt'.format(filePrefix), 'a') as f:
@@ -131,15 +151,18 @@ class DemkitSessions:
 # rounding can have values {None, 'up', 'down', 'closest'}
 # filePrefix is prefix of saved txt file in ALPG output format, one for real and one for estimated data with the file names 'fileprefix'_real.txt and 'fileprefix'_estimate.txt respectively
 # staticDefault is what we take as the estimated input in case there is no historical data on an individual car
-    def generateDemkitEVSpecsInput(self, keyStatsCap, keyStatsPower, keyRealCap, keyRealPower, filePrefix, rounding = None, staticDefaultPower = 7400, staticDefaultCapacity = 100000):
+    def generateDemkitEVSpecsInput(self, keyStatsCap, keyStatsPower, keyRealCap, keyRealPower, filePrefix, rounding = None, staticDefaultPower = 7400, staticDefaultCapacity = 100000, perCar = True):
         dataStats = self.dataStats 
         dataReal = self.dataReal
         data_dir = self.data_dir
 
         filePrefix = filePrefix.format(self.ScenarioPrefix)
-        print(filePrefix)
-
         cardIDs = pd.unique(dataReal['card_id'])
+        
+        #if we generate data per session, this suffices for the stats since capacity and max power are invariable over time (reasonable assumption)
+        if not perCar:
+            cardIDs = dataReal['card_id']
+        
         carCount = 0
         #loop over cars in the real data set
         for car in cardIDs:

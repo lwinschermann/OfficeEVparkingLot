@@ -33,10 +33,11 @@ class FilteringData:
     def __init__(self):
         #import data from Excel sheets
         #we receive our data via two channels that will be combined here. 
-        self.dataFiles = ['transactions_asr_all_2022-09-12T15_55_00.csv', '20220912transactions_asr.csv']
+        #self.dataFiles = ['transactions_asr_all_2022-09-12T15_55_00.csv', '20220912transactions_asr.csv'] #--> Used in Value of Information study
+        self.dataFiles = ['asrData1.csv', 'asrData2.csv'] #--> Used in PHC study
 
     #energyCutoOff in kWh
-    def filter_data(self, startTimeFilter = True, afterStartDate = dt.datetime(2021, 1, 1, 0, 0), beforeEndDate = dt.datetime(2021, 12, 31, 23, 59), energyFilter = True, energyCutOff = 0, defaultCapacity = None, defaultPower = None, maxDwellTime = None, minDwellTime = None, managersFilter = None,  listmanagersFilter = None, idFilter = None):
+    def filter_data(self, startTimeFilter = True, afterStartDate = dt.datetime(2021, 1, 1, 0, 0), beforeEndDate = dt.datetime(2021, 12, 31, 23, 59), energyFilter = True, energyCutOff = 0, defaultCapacity = None, defaultPower = None, maxDwellTime = None, minDwellTime = None, overnightStays = True, managersFilter = None,  listmanagersFilter = None, idFilter = None):
         dataFiles = self.dataFiles
         self.defaultPower = defaultPower
         self.defaultCapacity = defaultCapacity
@@ -88,8 +89,11 @@ class FilteringData:
         rawData2['end_datetime_utc'] = pd.to_datetime(rawData2['session_end_datetime'],format = '%Y-%m-%d %H:%M:%S')
 
         rawData2['total_energy'] = rawData2['session_kwh']
+        #to make comparable, we use symbols only, not asterixes or dashes in the card_ids.
         rawData2['card_id'] = rawData2['session_auth_id'].apply(lambda x: str(x).replace("-", ""))
-        rawData['card_id'] = rawData['card_id'].apply(lambda x: x.replace("-", ""))
+        rawData['card_id'] = rawData['card_id'].apply(lambda x: x.replace("-", ""))        
+        rawData2['card_id'] = rawData2['card_id'].apply(lambda x: str(x).replace("*", ""))
+        rawData['card_id'] = rawData['card_id'].apply(lambda x: x.replace("*", ""))
 
         # added this to remove *1 and *2 from evse_uid!
         rawData2['chargepoint_id'] = rawData2['evse_uid'].astype(str)
@@ -116,6 +120,7 @@ class FilteringData:
 
         # Check and remove duplicated sessions, only keep the first instance 
         rawData.drop_duplicates(subset=['transaction'], keep='first', inplace=True)
+
         rawData.to_csv('rawDataConcatenated.csv', index=False) 
         
         # Calculate dwell time
@@ -149,11 +154,14 @@ class FilteringData:
 
         print(rawData.dtypes)
 
+        #initialize here before applying filters
+        self.filteredData = rawData
+
         #filter data to be within certain (start) time period.
         #note cutoff value <= 6 January means midnight between 5 and 6 January. Included time to make it more intuitive. 
         if startTimeFilter == True:
             filterArgument = 'start_datetime_utc'
-            self.filteredData = rawData[(rawData[filterArgument] >= afterStartDate)&(rawData[filterArgument] <= beforeEndDate)]
+            self.filteredData = self.filteredData[(self.filteredData[filterArgument] >= afterStartDate)&(self.filteredData[filterArgument] <= beforeEndDate)]
         #filter data where the charged energy < 1 kW 
         if energyFilter == True:
             filterArgument = 'total_energy'
@@ -166,6 +174,9 @@ class FilteringData:
         if minDwellTime is not None:
             filterArgument = 'dwell_time_hours'
             self.filteredData = self.filteredData[self.filteredData[filterArgument] >= minDwellTime]  
+        #filter data where EVs stay past midnight if overnightStays = False
+        if not overnightStays:
+            self.filteredData = self.filteredData[self.filteredData['start_datetime_utc'].dt.day == self.filteredData['end_datetime_utc'].dt.day]
 
         #filter data where non-unique card ids (e.g. Plug & Charge)
         if idFilter is not None:
@@ -184,17 +195,23 @@ class FilteringData:
             self.filteredData = self.filteredData[self.filteredData['chargepoint_id'].isin(listmanagersFilter)]
             #self.filteredData.to_csv('onlydatamanagers.csv', index=True)
 
+        #sort by start date. Relevant for sampling process in ProvideHomeCommute study where we take the last x sessions in the dataset
+        self.filteredData = self.filteredData.sort_values(by=['start_secondsSinceStart'],ignore_index=True)
+        
+        self.rawData = rawData
         self.filteredData.to_excel("filteredData.xlsx")
     
         return self.filteredData
 
     #dwell is in seconds
     def online_estimate_end(self, carStats = None, dwell = 0, constant = 6*3600):
-        self.filteredData = self.filteredData.merge(carStats, on = 'card_id', how = 'left')
-        self.filteredData['count'] = self.filteredData['count'].fillna(0)
-        for aspect in ['mean', 'max', 'min', '75', '50', '25']:
-            self.filteredData['end_sreal_d{}'.format(aspect)] = self.filteredData['start_secondsSinceStart'] + self.filteredData['dwell_time_{}'.format(aspect)].fillna(dwell).apply(lambda x: max(x,dwell))
-            #dwell times of less than 15 min gives errors in DENKit for timeBase = 15 min. Also do for 30 min in extreme cases, but usually 15 min filters suffice in our data. 
-        self.filteredData['end_sreal_dconstant'.format(aspect)] = self.filteredData['start_secondsSinceStart'] + constant
+        if carStats is not None:
+            self.filteredData = self.filteredData.merge(carStats, on = 'card_id', how = 'left')
+            self.filteredData['count'] = self.filteredData['count'].fillna(0)
+            for aspect in ['mean', 'max', 'min', '75', '50', '25']:
+                self.filteredData['end_sreal_d{}'.format(aspect)] = self.filteredData['start_secondsSinceStart'] + self.filteredData['dwell_time_{}'.format(aspect)].fillna(dwell).apply(lambda x: max(x,dwell))
+                #dwell times of less than 15 min gives errors in DENKit for timeBase = 15 min. Also do for 30 min in extreme cases, but usually 15 min filters suffice in our data. 
+        self.filteredData['end_sreal_dconstant_sinceStart'] = self.filteredData['start_secondsSinceStart'] + constant
+        self.filteredData['end_sreal_dconstant_sinceMidnight'] = self.filteredData['start_datetime_seconds'] + constant
         return self.filteredData
  

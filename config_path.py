@@ -26,8 +26,8 @@ import os
 class Config:
     def initializePath():
         #specify os path
-        #os.chdir("C:/Users/WinschermannL/OneDrive - University of Twente/Documenten/Gridshield/ProvideHomeCommute")
-        os.chdir("C:/Users/WinschermannL/OneDrive - University of Twente/Documenten/Gridshield/ValueOfInformation")
+        os.chdir("C:/Users/WinschermannL/OneDrive - University of Twente/Documenten/Gridshield/ProvideHomeCommute")
+        #os.chdir("C:/Users/WinschermannL/OneDrive - University of Twente/Documenten/Gridshield/ValueOfInformation")
         #os.chdir('C:/Users/BanolAriasMN/OneDrive - University of Twente/mnba/projects/project-Griedshield/EV-ASR')
 
 
