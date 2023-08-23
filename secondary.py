@@ -470,7 +470,7 @@ for measure in measures:
     #for case in range(0,len(coreCases)):
     #   plt.plot(makeEnsLDC(cs['{}{}'.format(coreCases[case],measure)], divisor = scaling), label = coreNames[case], linewidth=2.5,color=color[case])
     plt.xlabel("Individual EVs [-]")
-    plt.ylabel("{} [kW]".format("Energy not served"))
+    plt.ylabel("{} [kWh]".format("Energy not served"))
     plt.ylim(-2,61)
     plt.legend(loc = 1)
     plt.grid()
